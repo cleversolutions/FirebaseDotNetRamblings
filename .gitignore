@@ -1,0 +1,5 @@
+*.dll
+obj/
+launch.json
+tasks.json
+bin/
