@@ -1,0 +1,2 @@
+# FirebaseDotNetRamblings
+Experiments with FirebaseDotNet
