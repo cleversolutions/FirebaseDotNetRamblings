@@ -21,14 +21,17 @@ namespace FirebaseDotNet
         static string databaseId = "(default)";
         static void Main(string[] args)
         {
-            //Task t = MainAsync(args);
-            //t.Wait();
-
-            //Create the listener
+            //Create our database connection
             FirestoreDb db = FirestoreDb.Create(projectId);
-            FirebaseDocumentListener listener = new FirebaseDocumentListener(db);
 
-            //Setup some event handlers
+            //Create a query
+            CollectionReference collection = db.Collection("cities");
+            Query qref = collection.Where("Capital", QueryOperator.Equal, true);
+
+            //Listen to realtime updates
+            FirebaseDocumentListener listener = qref.AddSnapshotListener(); //new FirebaseDocumentListener(db);
+
+            //Setup some event handlers on that listener
             listener.Error += (obj, e) =>{
                 Console.WriteLine("Error => " + e.Message);
             };
@@ -50,23 +53,6 @@ namespace FirebaseDotNet
                 Console.WriteLine("Document Deleted " + e.Id);
             };
 
-            //Setup our query
-            var query = new StructuredQuery
-            {
-                From = { new CollectionSelector { CollectionId = "cities" } },
-                Where = new Filter
-                {
-                    FieldFilter = new FieldFilter
-                    {
-                        Field = new FieldReference { FieldPath = "Capital" },
-                        Op = FieldFilter.Types.Operator.Equal,
-                        Value = new Value { BooleanValue = true }
-                    }
-                }
-            };
-            //Listen to changes to the query
-            listener.ListenToQuery(query);
-
             //Cleanup and Exit program if any key is pressed
             Console.WriteLine("Press any key to quit");
             Console.ReadKey();
@@ -75,7 +61,25 @@ namespace FirebaseDotNet
             Console.WriteLine("Goodbye!");
         }
 
-        /**** Anything below here is just some ramblings of a crazy man. Pay it no attention *****/
+        /**** Anything below here is just some ramblings of a crazy man. Pay it no attention, I just hate deleting old code *****/
+
+
+        // //Setup our query
+        // var query = new StructuredQuery
+        // {
+        //     From = { new CollectionSelector { CollectionId = "cities" } },
+        //     Where = new Filter
+        //     {
+        //         FieldFilter = new FieldFilter
+        //         {
+        //             Field = new FieldReference { FieldPath = "Capital" },
+        //             Op = FieldFilter.Types.Operator.Equal,
+        //             Value = new Value { BooleanValue = true }
+        //         }
+        //     }
+        // };
+        // //Listen to changes to the query
+        // listener.ListenToQuery(query);
 
         static async Task MainAsync(string[] args)
         {
@@ -84,6 +88,7 @@ namespace FirebaseDotNet
             FirestoreDb db = FirestoreDb.Create(projectId);
             CollectionReference collection = db.Collection("cities");
             Query qref = collection.Where("Capital", QueryOperator.Equal, true);
+            
             QuerySnapshot qs = await qref.SnapshotAsync();
             foreach (var item in qs.Documents)
             {

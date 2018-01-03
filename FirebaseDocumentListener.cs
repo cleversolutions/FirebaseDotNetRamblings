@@ -22,6 +22,18 @@ using static Google.Cloud.Firestore.V1Beta1.TargetChange.Types;
  */
 namespace Google.Cloud.Firestore
 {
+    public static class QueryExtentions{
+        public static FirebaseDocumentListener AddSnapshotListener(this Query query){
+            FirebaseDocumentListener listener = new FirebaseDocumentListener(query.Database);
+            //QueryProto is an internal attribute so we have to use reflection to access it
+            var queryType = typeof(Query);
+            var queryProto = queryType.GetProperty("QueryProto", BindingFlags.Instance | BindingFlags.NonPublic);
+            var structuredQuery = queryProto.GetValue(query) as StructuredQuery;
+            listener.ListenToQuery(structuredQuery);
+            return listener;
+        }
+    }
+
     public class FirebaseDocumentListener
     {
         private bool Done = false;
@@ -236,8 +248,7 @@ namespace Google.Cloud.Firestore
         {
             //Creation of DocumentSnapshots is internal so we are very much cheating and using reflection to access them
             var snapshotType = typeof(DocumentSnapshot);
-            var snapshotMethods = snapshotType.GetMethods(BindingFlags.Static | BindingFlags.NonPublic);
-            var forDocument = snapshotMethods.FirstOrDefault(m => m.Name == "ForDocument");
+            var forDocument = snapshotType.GetMethod("ForDocument", BindingFlags.Static | BindingFlags.NonPublic);
             //It's probably bad to use the current timestamp, but we don't seem to have access to the readTime in ListenResponse
             DocumentSnapshot snapshot = null;
             try
