@@ -34,7 +34,7 @@ namespace FirebaseDotNet
             };
             listener.Current += (obj, e) =>
             {
-                Console.WriteLine("Listener is current");
+                Console.WriteLine(string.Format("Listener is current - {0:O}", DateTime.Now.ToUniversalTime()));
             };
             listener.DocumentChanged += (obj, e) =>
             {
