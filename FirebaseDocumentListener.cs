@@ -19,8 +19,6 @@ using static Google.Cloud.Firestore.V1Beta1.TargetChange.Types;
  *  Firebase will terminate our listen request every 5 minutes, so we need a system to resend our requests so they pick up
  *  where they last left off. To accomplish this, I use a BlockingCollection, a status flags and some threads. 
  *
- *  DocumentSnapshot construction is internal to Google.Cloud.Firestore.dll so we can only return Document rather than DocumentSnapshot.
- *  That also means we loose Deserialize :(
  */
 namespace Google.Cloud.Firestore
 {
@@ -52,18 +50,28 @@ namespace Google.Cloud.Firestore
             //Setup no expiration for the listen
             ListenSettings = CallSettings.FromCallTiming(CallTiming.FromExpiration(Expiration.None));
 
+            //Start our handler for writing requests to GCP
             RequestHanderTask = StartRequestHandlerTask();
 
+            //Initialize a cancelation source so we can cancel tasks we create
             CancellationTokenSource = new CancellationTokenSource();
             CancellationToken = CancellationTokenSource.Token;
         }
 
+        //
+        // Cancel()
+        //
+        // Stop the listener
         public void Cancel()
         {
             Done = true;
             this.CancellationTokenSource.Cancel();
         }
 
+        //
+        // ListenToDocument(string documentPath)
+        //
+        // Listen to changes in a specific document
         public void ListenToDocument(string documentPath)
         {
             // Initialize a request
@@ -81,11 +89,15 @@ namespace Google.Cloud.Firestore
             PendingRequests.Add(request);
         }
 
+        //
+        // ListenToQuery(StructuredQuery query)
+        //
+        // Start listening to a query. I've not tried listening to multiple quries, your mileage may vary with that.
         public void ListenToQuery(StructuredQuery query)
         {
             var qt = new QueryTarget { };
             qt.StructuredQuery = query;
-            qt.Parent = "projects/playing-with-firestore/databases/(default)/documents";
+            qt.Parent = string.Format("projects/{0}/databases/{1}/documents", ProjectId, DatabaseId);
 
             ListenRequest request = new ListenRequest
             {
@@ -98,6 +110,9 @@ namespace Google.Cloud.Firestore
             PendingRequests.Add(request);
         }
 
+        //
+        // Various Events raised from messages on the response stream
+        //
         public event ErrorEventHandler Error;
         public event DebugMessageEventHandler DebugMessage;
         public event EventHandler Reset;
@@ -144,11 +159,11 @@ namespace Google.Cloud.Firestore
             if (DebugMessage != null) DebugMessage(this, new MessageEventArgs { Message = message });
         }
 
-        private void AddRequest(ListenRequest request)
-        {
-            PendingRequests.Add(request);
-        }
-
+        //
+        // IsPermanentError(RpcException exception)
+        //
+        // Determins if the error is recoverable or not.
+        // Borrowed from https://github.com/googleapis/nodejs-firestore/blob/ed83393ac9f646e33f429485a8e0ddcdd77ecb84/src/watch.js
         private bool IsPermanentError(RpcException exception)
         {
             if (exception == null) return false;
@@ -167,6 +182,10 @@ namespace Google.Cloud.Firestore
             }
         }
 
+        //
+        // StartRequestHandlerTask()
+        //
+        // Take any messages on our PendingRequest list and write them to GCP
         private Task StartRequestHandlerTask()
         {
             OnDebugMessage("Started Request Handler");
@@ -196,6 +215,10 @@ namespace Google.Cloud.Firestore
             });
         }
 
+        //
+        // RestartAllRequests()
+        //
+        // GCP closes the stream every 5 minutes. Re-request whatever we are listening for 
         private void RestartAllRequests()
         {
             OnDebugMessage("Restarting Requests");
@@ -205,7 +228,11 @@ namespace Google.Cloud.Firestore
             }
         }
 
-        private DocumentSnapshot CreateDocumentSnapshot(DocumentChange documentChange)
+        //
+        // CreateDocumentSnapshot(DocumentChange documentChange)
+        //
+        // Generate a DocumentSnapshot from a Document
+        private DocumentSnapshot CreateDocumentSnapshot(Document document)
         {
             //Creation of DocumentSnapshots is internal so we are very much cheating and using reflection to access them
             var snapshotType = typeof(DocumentSnapshot);
@@ -215,7 +242,7 @@ namespace Google.Cloud.Firestore
             DocumentSnapshot snapshot = null;
             try
             {
-                snapshot = forDocument.Invoke(null, new object[] { FirestoreDb, documentChange.Document, Timestamp.GetCurrentTimestamp() }) as DocumentSnapshot;
+                snapshot = forDocument.Invoke(null, new object[] { FirestoreDb, document, Timestamp.GetCurrentTimestamp() }) as DocumentSnapshot;
             }
             catch (Exception ex)
             {
@@ -224,8 +251,10 @@ namespace Google.Cloud.Firestore
             return snapshot;
         }
 
-        //TODO -- we need to figure out how to respond to many different respons and target changes
-        //Look at line 690 on https://github.com/googleapis/nodejs-firestore/blob/ed83393ac9f646e33f429485a8e0ddcdd77ecb84/src/watch.js
+        //
+        // StartResponseHandlerTask()
+        //
+        // Read responses from the response stream and dispatch events as necessary
         private Task StartResponseHandlerTask()
         {
             OnDebugMessage("Starting Response Handler");
@@ -258,7 +287,7 @@ namespace Google.Cloud.Firestore
                             else if (response.TargetChange.TargetChangeType == TargetChangeType.Remove)
                             {
                                 //Remove called, shutdown the listener
-                                OnError("Document Removed " + response.TargetChange.Cause.Details);
+                                OnError("Document Removed - " + response.TargetChange.Cause.Message);
                                 this.Cancel();
                             }
                             else if (response.TargetChange.TargetChangeType == TargetChangeType.Reset)
@@ -276,7 +305,7 @@ namespace Google.Cloud.Firestore
                         }
                         else if (response.DocumentChange != null)
                         {
-                            var snapshot = CreateDocumentSnapshot(response.DocumentChange);
+                            var snapshot = CreateDocumentSnapshot(response.DocumentChange.Document);
                             if (DocumentChanged != null) DocumentChanged(this, new DocumentEventArgs { Document = response.DocumentChange.Document, DocumentSnapshot = snapshot });
                         }
                         else if (response.DocumentRemove != null)

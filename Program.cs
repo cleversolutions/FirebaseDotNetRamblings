@@ -38,9 +38,6 @@ namespace FirebaseDotNet
             {
                 var city = e.DocumentSnapshot.Deserialize<City>();
                 Console.WriteLine(string.Format("City {0} Changed/Added with pop {1}", city.Name, city.Population ));
-                // foreach(var field in e.Document.Fields){
-                //     Console.WriteLine(string.Format("\t{0}\t=>{1}", field.Key, field.Value.ToString()));
-                // }
             };
             listener.DocumentRemoved += (obj, e) =>
             {
