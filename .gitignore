@@ -3,3 +3,4 @@ obj/
 launch.json
 tasks.json
 bin/
+private/
