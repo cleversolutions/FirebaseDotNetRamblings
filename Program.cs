@@ -32,17 +32,18 @@ namespace FirebaseDotNet
             FirebaseDocumentListener listener = qref.AddSnapshotListener(); //new FirebaseDocumentListener(db);
 
             //Setup some event handlers on that listener
-            listener.Error += (obj, e) =>{
+            listener.DocumentChanged += (obj, e) =>
+            {
+                var city = e.DocumentSnapshot.Deserialize<City>();
+                Console.WriteLine(string.Format("City {0} Changed/Added with pop {1}", city.Name, city.Population));
+            };
+            listener.Error += (obj, e) =>
+            {
                 Console.WriteLine("Error => " + e.Message);
             };
             listener.Current += (obj, e) =>
             {
                 Console.WriteLine(string.Format("Listener is current - {0:O}", DateTime.Now.ToUniversalTime()));
-            };
-            listener.DocumentChanged += (obj, e) =>
-            {
-                var city = e.DocumentSnapshot.Deserialize<City>();
-                Console.WriteLine(string.Format("City {0} Changed/Added with pop {1}", city.Name, city.Population ));
             };
             listener.DocumentRemoved += (obj, e) =>
             {
@@ -88,7 +89,7 @@ namespace FirebaseDotNet
             FirestoreDb db = FirestoreDb.Create(projectId);
             CollectionReference collection = db.Collection("cities");
             Query qref = collection.Where("Capital", QueryOperator.Equal, true);
-            
+
             QuerySnapshot qs = await qref.SnapshotAsync();
             foreach (var item in qs.Documents)
             {
