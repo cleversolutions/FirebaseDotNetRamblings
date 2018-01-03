@@ -21,25 +21,51 @@ namespace FirebaseDotNet
         static string databaseId = "(default)";
         static void Main(string[] args)
         {
-            Task t = MainAsync(args);
-            t.Wait();
+            //Task t = MainAsync(args);
+            //t.Wait();
 
             FirebaseDocumentListener listener = new FirebaseDocumentListener()
             {
                 ProjectId = projectId,
                 DatabaseId = databaseId
             };
+            listener.Error += (obj, e) =>{
+                Console.WriteLine("Error => " + e.Message);
+            };
+            listener.Current += (obj, e) =>
+            {
+                Console.WriteLine("Listener is current");
+            };
+            listener.DocumentChanged += (obj, e) =>
+            {
+                Console.WriteLine("Document Changed/Added " + e.Document.Name);
+                foreach(var field in e.Document.Fields){
+                    Console.WriteLine(string.Format("\t{0}\t=>{1}", field.Key, field.Value.ToString()));
+                }
+            };
+            listener.DocumentRemoved += (obj, e) =>
+            {
+                Console.WriteLine("Document Removed " + e.Id);
+            };
+            listener.DocumentDeleted += (obj, e) =>
+            {
+                Console.WriteLine("Document Deleted " + e.Id);
+            };
+
 
             //listener.ListenToDocument(string.Format("projects/{0}/databases/{1}/documents/cities/9n3yeBkGYQz8VVFWXcUd", projectId, databaseId));
             //string q = string.Format("projects/{0}/databases/{1}/documents/cities", projectId, databaseId);
-            var query = new StructuredQuery { 
+            var query = new StructuredQuery
+            {
                 From = { new CollectionSelector { CollectionId = "cities" } },
-                Where = new Filter{
-                    FieldFilter = new FieldFilter{
-                        Field=new FieldReference { FieldPath = "Capital" }, 
-                        Op=FieldFilter.Types.Operator.Equal, 
-                        Value=new Value{BooleanValue = true}
-                        }
+                Where = new Filter
+                {
+                    FieldFilter = new FieldFilter
+                    {
+                        Field = new FieldReference { FieldPath = "Capital" },
+                        Op = FieldFilter.Types.Operator.Equal,
+                        Value = new Value { BooleanValue = true }
+                    }
                 }
             };
             listener.ListenToQuery(query);
@@ -50,6 +76,8 @@ namespace FirebaseDotNet
             listener.Cancel();
             Console.WriteLine("Goodbye!");
         }
+
+
 
         static async Task MainAsync(string[] args)
         {
@@ -62,9 +90,9 @@ namespace FirebaseDotNet
             foreach (var item in qs.Documents)
             {
                 var city = item.Deserialize<City>();
-                Console.WriteLine(String.Format("{0} is a capital", city.Name ));
+                Console.WriteLine(String.Format("{0} is a capital", city.Name));
             }
-            
+
             //FirestoreDb db = FirestoreDb.Create(projectId);
 
             //await ListenRequestTest();
@@ -344,7 +372,7 @@ namespace FirebaseDotNet
         }
 
 
-        static async Task ListenTest(ByteString resumeToken=null)
+        static async Task ListenTest(ByteString resumeToken = null)
         {
             // Create client
             FirestoreClient firestoreClient = FirestoreClient.Create();
@@ -388,7 +416,8 @@ namespace FirebaseDotNet
                     Console.WriteLine(string.Format("Exception: stream status {0} - {1}", status.StatusCode.ToString(), status.Detail));
                     //Can we restart it?
                     //See https://github.com/googleapis/nodejs-firestore/blob/ed83393ac9f646e33f429485a8e0ddcdd77ecb84/src/watch.js
-                    if(ex.Status.StatusCode == Grpc.Core.StatusCode.Internal){
+                    if (ex.Status.StatusCode == Grpc.Core.StatusCode.Internal)
+                    {
                         Console.WriteLine("Attempting to recover");
 
                         await ListenTest(lastResume);
@@ -421,24 +450,26 @@ namespace FirebaseDotNet
 
             //Write out requsts 
             //while(!done){
-            for(int i = 0; i < 10; i++){
+            for (int i = 0; i < 10; i++)
+            {
                 var newRequest = requests.Take();
                 // Stream a request to the server
                 await duplexStream.WriteAsync(newRequest);
             }
-            
+
             await duplexStream.WriteCompleteAsync();
 
             // Await the response handler.
             // This will complete once all server responses have been processed.
             await responseHandlerTask;
 
-            if( lastResume != null && lastResume.Length > 0){
+            if (lastResume != null && lastResume.Length > 0)
+            {
                 await ListenTest(lastResume);
             }
         }
 
-        
+
         static async Task CreateCity()
         {
 
