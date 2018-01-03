@@ -24,9 +24,11 @@ namespace FirebaseDotNet
             //Task t = MainAsync(args);
             //t.Wait();
 
+            //Create the listener
             FirestoreDb db = FirestoreDb.Create(projectId);
             FirebaseDocumentListener listener = new FirebaseDocumentListener(db);
 
+            //Setup some event handlers
             listener.Error += (obj, e) =>{
                 Console.WriteLine("Error => " + e.Message);
             };
@@ -48,9 +50,7 @@ namespace FirebaseDotNet
                 Console.WriteLine("Document Deleted " + e.Id);
             };
 
-
-            //listener.ListenToDocument(string.Format("projects/{0}/databases/{1}/documents/cities/9n3yeBkGYQz8VVFWXcUd", projectId, databaseId));
-            //string q = string.Format("projects/{0}/databases/{1}/documents/cities", projectId, databaseId);
+            //Setup our query
             var query = new StructuredQuery
             {
                 From = { new CollectionSelector { CollectionId = "cities" } },
@@ -64,14 +64,18 @@ namespace FirebaseDotNet
                     }
                 }
             };
+            //Listen to changes to the query
             listener.ListenToQuery(query);
 
+            //Cleanup and Exit program if any key is pressed
             Console.WriteLine("Press any key to quit");
             Console.ReadKey();
             Console.WriteLine("Canceling the listener");
             listener.Cancel();
             Console.WriteLine("Goodbye!");
         }
+
+        /**** Anything below here is just some ramblings of a crazy man. Pay it no attention *****/
 
         static async Task MainAsync(string[] args)
         {
