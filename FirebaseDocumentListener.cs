@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Google.Api.Gax;
@@ -37,11 +39,15 @@ namespace Google.Cloud.Firestore
         private Task ResponseHanderTask = null;
         private CancellationTokenSource CancellationTokenSource;
         private CancellationToken CancellationToken;
+        private FirestoreDb FirestoreDb { get; set; }
 
-        public FirebaseDocumentListener()
+        public FirebaseDocumentListener(FirestoreDb db)
         {
             // Create client
-            FirestoreClient = FirestoreClient.Create();
+            FirestoreDb = db;
+            FirestoreClient = db.Client; //FirestoreClient.Create();
+            ProjectId = db.ProjectId;
+            DatabaseId = db.DatabaseId;
 
             //Setup no expiration for the listen
             ListenSettings = CallSettings.FromCallTiming(CallTiming.FromExpiration(Expiration.None));
@@ -96,7 +102,6 @@ namespace Google.Cloud.Firestore
         public event DebugMessageEventHandler DebugMessage;
         public event EventHandler Reset;
         public event EventHandler Current;
-        public event DocumentEventHandler DocumentAdded;
         public event DocumentEventHandler DocumentChanged;
         public event DocumentIdEventHandler DocumentRemoved;
         public event DocumentIdEventHandler DocumentDeleted;
@@ -105,6 +110,7 @@ namespace Google.Cloud.Firestore
         public class DocumentEventArgs : EventArgs
         {
             public Document Document { get; set; }
+            public DocumentSnapshot DocumentSnapshot { get; set; }
         }
         public delegate void DocumentEventHandler(object sender, DocumentEventArgs e);
 
@@ -161,8 +167,6 @@ namespace Google.Cloud.Firestore
             }
         }
 
-
-
         private Task StartRequestHandlerTask()
         {
             OnDebugMessage("Started Request Handler");
@@ -173,18 +177,18 @@ namespace Google.Cloud.Firestore
                     var request = PendingRequests.Take(CancellationToken);
                     OnDebugMessage("Setup listen for request");
 
-                //If the listener isn't active, start it
-                if (DuplexStream == null || !ListenerIsActive)
+                    //If the listener isn't active, start it
+                    if (DuplexStream == null || !ListenerIsActive)
                     {
-                    // Initialize streaming call, retrieving the stream object
-                    DuplexStream = FirestoreClient.Listen(ListenSettings);
+                        // Initialize streaming call, retrieving the stream object
+                        DuplexStream = FirestoreClient.Listen(ListenSettings);
                         ListenerIsActive = true;
                         OnDebugMessage("Response Task Not Active, starting");
                         ResponseHanderTask = StartResponseHandlerTask();
                     }
                     OnDebugMessage("Sending Request");
-                // Stream a request to the server
-                await DuplexStream.WriteAsync(request);
+                    // Stream a request to the server
+                    await DuplexStream.WriteAsync(request);
                     ActiveRequests.Enqueue(request);
                 }
                 OnDebugMessage("Request Handler Completed");
@@ -201,6 +205,25 @@ namespace Google.Cloud.Firestore
             }
         }
 
+        private DocumentSnapshot CreateDocumentSnapshot(DocumentChange documentChange)
+        {
+            //Creation of DocumentSnapshots is internal so we are very much cheating and using reflection to access them
+            var snapshotType = typeof(DocumentSnapshot);
+            var snapshotMethods = snapshotType.GetMethods(BindingFlags.Static | BindingFlags.NonPublic);
+            var forDocument = snapshotMethods.FirstOrDefault(m => m.Name == "ForDocument");
+            //It's probably bad to use the current timestamp, but we don't seem to have access to the readTime in ListenResponse
+            DocumentSnapshot snapshot = null;
+            try
+            {
+                snapshot = forDocument.Invoke(null, new object[] { FirestoreDb, documentChange.Document, Timestamp.GetCurrentTimestamp() }) as DocumentSnapshot;
+            }
+            catch (Exception ex)
+            {
+                OnError(ex.ToString());
+            }
+            return snapshot;
+        }
+
         //TODO -- we need to figure out how to respond to many different respons and target changes
         //Look at line 690 on https://github.com/googleapis/nodejs-firestore/blob/ed83393ac9f646e33f429485a8e0ddcdd77ecb84/src/watch.js
         private Task StartResponseHandlerTask()
@@ -211,8 +234,8 @@ namespace Google.Cloud.Firestore
                 IAsyncEnumerator<ListenResponse> responseStream = DuplexStream.ResponseStream;
                 try
                 {
-                //ListenerIsActive = true;
-                while (await responseStream.MoveNext(CancellationToken))
+                    //ListenerIsActive = true;
+                    while (await responseStream.MoveNext(CancellationToken))
                     {
                         ListenResponse response = responseStream.Current;
                         if (response.TargetChange != null)
@@ -229,13 +252,13 @@ namespace Google.Cloud.Firestore
                             }
                             else if (response.TargetChange.TargetChangeType == TargetChangeType.Add)
                             {
-                            //Not much to be done here, if we follow the Node.js example we could set a TargetId when 
-                            //we create the request, then ensure it is returned                            
-                        }
+                                //Not much to be done here, if we follow the Node.js example we could set a TargetId when 
+                                //we create the request, then ensure it is returned                            
+                            }
                             else if (response.TargetChange.TargetChangeType == TargetChangeType.Remove)
                             {
-                            //Remove called, shutdown the listener
-                            OnError("Document Removed " + response.TargetChange.Cause.Details);
+                                //Remove called, shutdown the listener
+                                OnError("Document Removed " + response.TargetChange.Cause.Details);
                                 this.Cancel();
                             }
                             else if (response.TargetChange.TargetChangeType == TargetChangeType.Reset)
@@ -253,7 +276,8 @@ namespace Google.Cloud.Firestore
                         }
                         else if (response.DocumentChange != null)
                         {
-                            if (DocumentChanged != null) DocumentChanged(this, new DocumentEventArgs { Document = response.DocumentChange.Document });
+                            var snapshot = CreateDocumentSnapshot(response.DocumentChange);
+                            if (DocumentChanged != null) DocumentChanged(this, new DocumentEventArgs { Document = response.DocumentChange.Document, DocumentSnapshot = snapshot });
                         }
                         else if (response.DocumentRemove != null)
                         {

@@ -24,11 +24,9 @@ namespace FirebaseDotNet
             //Task t = MainAsync(args);
             //t.Wait();
 
-            FirebaseDocumentListener listener = new FirebaseDocumentListener()
-            {
-                ProjectId = projectId,
-                DatabaseId = databaseId
-            };
+            FirestoreDb db = FirestoreDb.Create(projectId);
+            FirebaseDocumentListener listener = new FirebaseDocumentListener(db);
+
             listener.Error += (obj, e) =>{
                 Console.WriteLine("Error => " + e.Message);
             };
@@ -38,10 +36,11 @@ namespace FirebaseDotNet
             };
             listener.DocumentChanged += (obj, e) =>
             {
-                Console.WriteLine("Document Changed/Added " + e.Document.Name);
-                foreach(var field in e.Document.Fields){
-                    Console.WriteLine(string.Format("\t{0}\t=>{1}", field.Key, field.Value.ToString()));
-                }
+                var city = e.DocumentSnapshot.Deserialize<City>();
+                Console.WriteLine(string.Format("City {0} Changed/Added with pop {1}", city.Name, city.Population ));
+                // foreach(var field in e.Document.Fields){
+                //     Console.WriteLine(string.Format("\t{0}\t=>{1}", field.Key, field.Value.ToString()));
+                // }
             };
             listener.DocumentRemoved += (obj, e) =>
             {
@@ -76,8 +75,6 @@ namespace FirebaseDotNet
             listener.Cancel();
             Console.WriteLine("Goodbye!");
         }
-
-
 
         static async Task MainAsync(string[] args)
         {
